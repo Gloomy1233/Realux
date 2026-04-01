@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "988371054696",
+    "project_id": "realux-8cd84",
+    "storage_bucket": "realux-8cd84.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:988371054696:android:74272e4e301e39a77e0bdd",
+        "android_client_info": {
+          "package_name": "com.realux.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAeB1pTFqgRfIsdbWrUt6E4IhrhgzkS0yI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,1 @@
+Place **`RPC-SCIENTIFIC-PAPER-3.pdf`** in this folder when you have it available. The digest module under `src/lib/rpc/rpcVerifier.ts` takes conceptual inspiration from that paper; it is not a complete formal implementation.
