@@ -101,6 +101,10 @@ export function firebaseEmulatorHosts() {
     firestorePort: Number(process.env.EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT ?? '8080'),
     authHost: process.env.EXPO_PUBLIC_AUTH_EMULATOR_HOST ?? '127.0.0.1',
     authPort: Number(process.env.EXPO_PUBLIC_AUTH_EMULATOR_PORT ?? '9099'),
+    functionsHost: process.env.EXPO_PUBLIC_FUNCTIONS_EMULATOR_HOST ?? '127.0.0.1',
+    functionsPort: Number(process.env.EXPO_PUBLIC_FUNCTIONS_EMULATOR_PORT ?? '5001'),
+    storageHost: process.env.EXPO_PUBLIC_STORAGE_EMULATOR_HOST ?? '127.0.0.1',
+    storagePort: Number(process.env.EXPO_PUBLIC_STORAGE_EMULATOR_PORT ?? '9199'),
   };
 }
 

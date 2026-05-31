@@ -17,8 +17,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Realux captures images to register them for later verification.",
-        "NSPhotoLibraryUsageDescription": "Realux reads photos you select to verify embedded registration data.",
-        "NSPhotoLibraryAddUsageDescription": "Realux saves captures you take to your photo library."
+        "NSPhotoLibraryUsageDescription": "Realux reads photos you select from your library for registration or verification.",
+        "NSPhotoLibraryAddUsageDescription": "Realux saves captures you take to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -56,7 +57,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Realux to open your gallery for verification."
+          "photosPermission": "Allow Realux to open your gallery so you can register or verify an image."
         }
       ],
       [

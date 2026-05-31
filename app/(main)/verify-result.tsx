@@ -30,9 +30,17 @@ export default function VerifyResultScreen() {
       <Text style={styles.row}>File + core hash match: {d.hashMatched ? 'yes' : 'no'}</Text>
       <Text style={styles.row}>RPC digest match: {d.rpcDigestMatched ? 'yes' : 'no'}</Text>
       <Text style={styles.row}>Checksum match: {d.checksumMatched ? 'yes' : 'no'}</Text>
+      {outcome.serverVerdict ? <Text style={styles.row}>Server verdict: {outcome.serverVerdict}</Text> : null}
+      {d.confidence != null ? <Text style={styles.row}>Confidence: {Math.round(d.confidence * 100)}%</Text> : null}
+      {d.backendVerified != null ? <Text style={styles.row}>Backend certificate: {d.backendVerified ? 'valid' : 'not valid'}</Text> : null}
       {outcome.mediaId ? (
         <Text style={styles.mono} selectable>
-          mediaId: {outcome.mediaId}
+          captureId: {outcome.mediaId}
+        </Text>
+      ) : null}
+      {outcome.certificateId ? (
+        <Text style={styles.mono} selectable>
+          certificateId: {outcome.certificateId}
         </Text>
       ) : null}
       {d.notes.length ? (

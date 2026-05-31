@@ -1,7 +1,9 @@
 import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 
-export type SaveToLibraryResult = { ok: true } | { ok: false; reason: string };
+export type SaveToLibraryResult =
+  | { ok: true; assetId?: string }
+  | { ok: false; reason: string };
 
 /**
  * Writes a local image file into the system photo library so it appears in Gallery / Photos.
@@ -20,8 +22,8 @@ export async function saveCaptureToPhotoLibrary(fileUri: string): Promise<SaveTo
   }
 
   try {
-    await MediaLibrary.saveToLibraryAsync(fileUri);
-    return { ok: true };
+    const asset = await MediaLibrary.createAssetAsync(fileUri);
+    return { ok: true, assetId: asset.id };
   } catch (e) {
     return {
       ok: false,

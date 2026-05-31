@@ -66,6 +66,9 @@ export type VerificationDetail = {
   rpcDigestMatched: boolean;
   checksumMatched: boolean;
   mediaIdMatched: boolean;
+  backendVerified?: boolean;
+  exactFileHashMatched?: boolean;
+  confidence?: number;
   notes: string[];
 };
 
@@ -73,5 +76,7 @@ export type VerificationOutcome = {
   label: VerificationResultLabel;
   details: VerificationDetail;
   mediaId?: string;
+  certificateId?: string;
+  serverVerdict?: string;
   firestoreRecord?: MediaRecord | null;
 };
