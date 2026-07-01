@@ -13,3 +13,13 @@ export async function persistCameraCaptureToCache(sourceUri: string): Promise<st
   await FileSystem.copyAsync({ from: sourceUri, to: dest });
   return dest;
 }
+
+export async function persistVideoCaptureToCache(sourceUri: string): Promise<string> {
+  const cacheDir = FileSystem.cacheDirectory;
+  if (!cacheDir) {
+    throw new Error('Cache directory unavailable');
+  }
+  const dest = `${cacheDir}realux-video-capture-${Date.now()}.mp4`;
+  await FileSystem.copyAsync({ from: sourceUri, to: dest });
+  return dest;
+}

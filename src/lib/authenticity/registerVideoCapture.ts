@@ -10,24 +10,30 @@ import {
   keccak512Base64Url,
   randomNonceBase64Url,
 } from '@/lib/authenticity/crypto';
-import { appendProofEnvelope, readImageBytes, stripKnownProofTrailers } from '@/lib/authenticity/jpegProof';
+import { appendProofEnvelope, readVideoBytes, stripKnownProofTrailers } from '@/lib/authenticity/mp4Proof';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { commitCaptureRegistration, createCaptureSessionForOwner } from '@/lib/authenticity/sessionClient';
 import { saveProofToVault } from '@/lib/authenticity/proofVault';
-import { prepareJpegForFirestore } from '@/lib/media/prepareImageForFirestoreRegistration';
-import { saveCaptureToPhotoLibrary } from '@/lib/media/saveCaptureToLibrary';
+import { prepareVideoForRegistration } from '@/lib/media/prepareVideoForRegistration';
+import { saveVideoToLibrary } from '@/lib/media/saveCaptureToLibrary';
 import { PROOF_VERSION, type CaptureMetadata } from '@/types/authenticity';
 
-export async function registerCaptureWithBackend(params: {
+export async function registerVideoCaptureWithBackend(params: {
   localUri: string;
   uid: string;
   deviceId: string;
   width: number;
   height: number;
+  durationMs: number;
 }): Promise<{ captureId: string; certificateId: string; verdict: 'verified_realux_capture'; savedUri: string }> {
-  const prepped = await prepareJpegForFirestore(params.localUri, params.width, params.height, 2048, 0.82);
-  const session = await createCaptureSessionForOwner(params.deviceId, params.uid);
+  const prepped = await prepareVideoForRegistration(
+    params.localUri,
+    params.width,
+    params.height,
+    params.durationMs
+  );
+  const session = await createCaptureSessionForOwner(params.deviceId, params.uid, 'video');
   const clientKeys = generateClientKeyPair();
   const sessionKey = deriveSessionKey({
     privateKey: clientKeys.privateKey,
@@ -39,13 +45,14 @@ export async function registerCaptureWithBackend(params: {
   const metadata: CaptureMetadata = {
     width: prepped.width,
     height: prepped.height,
-    mimeType: 'image/jpeg',
+    durationMs: prepped.durationMs,
+    mimeType: 'video/mp4',
     appVersion: Constants.expoConfig?.version ?? 'dev',
     deviceId: params.deviceId,
     capturedAt: Date.now(),
     platform: Platform.OS,
   };
-  const imageHash = keccak512Base64Url(stripKnownProofTrailers(await readImageBytes(prepped.uri)));
+  const imageHash = keccak512Base64Url(stripKnownProofTrailers(await readVideoBytes(prepped.uri)));
   const metadataHash = hashCanonicalJson(metadata);
   const encryptedPlaintext = {
     version: PROOF_VERSION,
@@ -75,7 +82,7 @@ export async function registerCaptureWithBackend(params: {
     ciphertext,
   });
 
-  const imageBase64 = await FileSystem.readAsStringAsync(proofUri, {
+  const videoBase64 = await FileSystem.readAsStringAsync(proofUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   const registered = await commitCaptureRegistration({
@@ -84,22 +91,17 @@ export async function registerCaptureWithBackend(params: {
     storagePath: session.storagePath,
     clientPublicKey: clientKeys.publicKey,
     metadata,
-    imageBase64,
+    videoBase64,
   });
 
   if (Platform.OS !== 'web') {
-    const saved = await saveCaptureToPhotoLibrary(proofUri);
-    await saveProofToVault(
-      session.captureId,
-      proofUri,
-      'image',
-      saved.ok ? saved.assetId : undefined
-    );
+    const saved = await saveVideoToLibrary(proofUri);
+    await saveProofToVault(session.captureId, proofUri, 'video', saved.ok ? saved.assetId : undefined);
     if (!saved.ok) {
-      console.warn('[Realux] Registered in backend but could not save proof image to gallery:', saved.reason);
+      console.warn('[Realux] Registered in backend but could not save proof video to gallery:', saved.reason);
     }
   } else {
-    await saveProofToVault(session.captureId, proofUri, 'image');
+    await saveProofToVault(session.captureId, proofUri, 'video');
   }
 
   return {

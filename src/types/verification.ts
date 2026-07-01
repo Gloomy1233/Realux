@@ -78,5 +78,6 @@ export type VerificationOutcome = {
   mediaId?: string;
   certificateId?: string;
   serverVerdict?: string;
+  mediaKind?: 'image' | 'video';
   firestoreRecord?: MediaRecord | null;
 };

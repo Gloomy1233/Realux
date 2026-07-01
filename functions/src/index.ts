@@ -16,7 +16,7 @@ import {
   randomBase64Url,
   signCertificate,
 } from './crypto.js';
-import { extractProofEnvelope, stripKnownProofTrailers } from './jpegProof.js';
+import { extractProofEnvelope, mimeTypeFromMetadata, stripKnownProofTrailers, contentTypeForMime } from './mediaProof.js';
 import {
   CERTIFICATE_KEY_ID,
   CERTIFICATE_VERSION,
@@ -25,7 +25,9 @@ import {
   GetCertificateRequestSchema,
   RegisterCaptureRequestSchema,
   VerifyImageRequestSchema,
+  VerifyVideoRequestSchema,
   type CertificatePayload,
+  type MediaKind,
 } from './schemas.js';
 
 initializeApp();
@@ -120,18 +122,21 @@ async function createCaptureSessionData(data: unknown) {
   });
   const input = CreateCaptureSessionRequestSchema.parse(data);
   const uid = input.ownerUid ?? PROTOTYPE_OWNER_UID;
+  const mediaKind: MediaKind = input.mediaKind ?? 'image';
   const sessionId = crypto.randomUUID();
   const captureId = crypto.randomUUID();
   const serverKeys = generateP256KeyPair();
   const serverNonce = randomBase64Url(32);
   const expiresAt = Date.now() + SESSION_TTL_MS;
-  const storagePath = `captures/${uid}/${captureId}/registered.jpg`;
+  const extension = mediaKind === 'video' ? 'mp4' : 'jpg';
+  const storagePath = `captures/${uid}/${captureId}/registered.${extension}`;
 
   await db.doc(`captureSessions/${sessionId}`).set({
     sessionId,
     captureId,
     ownerUid: uid,
     deviceId: input.deviceId,
+    mediaKind,
     serverPrivateKey: serverKeys.privateKey,
     serverPublicKey: serverKeys.publicKey,
     serverNonce,
@@ -144,6 +149,7 @@ async function createCaptureSessionData(data: unknown) {
     uid,
     sessionId,
     captureId,
+    mediaKind,
     storagePath,
   });
 
@@ -153,6 +159,7 @@ async function createCaptureSessionData(data: unknown) {
     serverPublicKey: serverKeys.publicKey,
     serverNonce,
     storagePath,
+    mediaKind,
     expiresAt,
   };
 }
@@ -191,16 +198,19 @@ async function registerCaptureData(data: unknown) {
   }
 
   let raw: Uint8Array;
-  if (input.imageBase64) {
-    const buf = Buffer.from(input.imageBase64, 'base64');
+  const mimeType = mimeTypeFromMetadata(input.metadata);
+  const contentType = contentTypeForMime(mimeType);
+  const inlineBase64 = mimeType === 'video/mp4' ? input.videoBase64 : input.imageBase64;
+  if (inlineBase64) {
+    const buf = Buffer.from(inlineBase64, 'base64');
     raw = new Uint8Array(buf);
-    await bucket.file(input.storagePath).save(buf, { contentType: 'image/jpeg' });
+    await bucket.file(input.storagePath).save(buf, { contentType });
   } else {
     raw = await readObjectBytes(input.storagePath);
   }
-  const envelope = extractProofEnvelope(raw);
+  const envelope = extractProofEnvelope(raw, mimeType);
   if (!envelope) {
-    throw new HttpsError('failed-precondition', 'No Realux proof envelope found in image.');
+    throw new HttpsError('failed-precondition', 'No Realux proof envelope found in media file.');
   }
   if (
     envelope.captureId !== input.captureId ||
@@ -224,7 +234,7 @@ async function registerCaptureData(data: unknown) {
   });
   const proof = EncryptedProofPlaintextSchema.parse(JSON.parse(bytesToUtf8(plaintextBytes)));
 
-  const coreBytes = stripKnownProofTrailers(raw);
+  const coreBytes = stripKnownProofTrailers(raw, mimeType);
   const imageHash = keccak512Base64Url(coreBytes);
   const fullFileHash = keccak512Base64Url(raw);
   const metadataHash = hashCanonicalJson(input.metadata);
@@ -235,7 +245,7 @@ async function registerCaptureData(data: unknown) {
     proof.imageHash !== imageHash ||
     proof.metadataHash !== metadataHash
   ) {
-    throw new HttpsError('failed-precondition', 'Encrypted proof does not match uploaded image.');
+    throw new HttpsError('failed-precondition', 'Encrypted proof does not match uploaded media.');
   }
 
   const signingKey = await getCertificateSigningKey();
@@ -304,20 +314,43 @@ export const registerCapture = onCall(CALLABLE_OPTIONS, async (request) => {
   return registerCaptureData(request.data);
 });
 
-async function verifyImageData(data: unknown) {
-  const input = VerifyImageRequestSchema.parse(data);
+async function verifyMediaData(data: unknown, mediaKind: MediaKind) {
+  const input =
+    mediaKind === 'video'
+      ? VerifyVideoRequestSchema.parse(data)
+      : VerifyImageRequestSchema.parse(data);
+  const mimeType = mediaKind === 'video' ? 'video/mp4' : 'image/jpeg';
+  const inlineBase64 =
+    mediaKind === 'video'
+      ? 'videoBase64' in input
+        ? input.videoBase64
+        : undefined
+      : 'imageBase64' in input
+        ? input.imageBase64
+        : undefined;
   const raw = input.storagePath
     ? await readObjectBytes(input.storagePath)
-    : new Uint8Array(Buffer.from(input.imageBase64 ?? '', 'base64'));
+    : new Uint8Array(Buffer.from(inlineBase64 ?? '', 'base64'));
   const reasons: string[] = [];
-  const envelope = extractProofEnvelope(raw);
+  const envelope = extractProofEnvelope(raw, mimeType);
   if (!envelope) {
-    return { verdict: 'unknown_provenance', confidence: 0, reasons: ['No Realux proof envelope found.'] };
+    return {
+      verdict: 'unknown_provenance',
+      confidence: 0,
+      mediaKind,
+      reasons: ['No Realux proof envelope found.'],
+    };
   }
 
   const recordSnap = await db.doc(`captures/${envelope.captureId}`).get();
   if (!recordSnap.exists) {
-    return { verdict: 'unknown_provenance', confidence: 0, captureId: envelope.captureId, reasons: ['No backend capture record.'] };
+    return {
+      verdict: 'unknown_provenance',
+      confidence: 0,
+      captureId: envelope.captureId,
+      mediaKind,
+      reasons: ['No backend capture record.'],
+    };
   }
   const record = recordSnap.data() as {
     ownerUid: string;
@@ -326,14 +359,18 @@ async function verifyImageData(data: unknown) {
     storagePath: string;
     certificateId: string;
     status: string;
+    metadata?: { mimeType?: string };
   };
-  const imageHash = keccak512Base64Url(stripKnownProofTrailers(raw));
+  const imageHash = keccak512Base64Url(stripKnownProofTrailers(raw, mimeType));
   const fullFileHash = keccak512Base64Url(raw);
   const imageHashOk = imageHash === record.imageHash;
   const fullFileHashOk = fullFileHash === record.fullFileHash;
-  if (!imageHashOk) reasons.push('Canonical image hash changed.');
+  if (!imageHashOk) reasons.push('Canonical media hash changed.');
   if (!fullFileHashOk) reasons.push('Exact file bytes changed or were re-encoded.');
   if (record.status !== 'registered') reasons.push('Capture record is not currently registered.');
+  if (record.metadata?.mimeType && record.metadata.mimeType !== mimeType) {
+    reasons.push('Media type does not match the registered capture record.');
+  }
 
   const verdict = imageHashOk && fullFileHashOk && record.status === 'registered'
     ? 'verified_realux_capture'
@@ -345,6 +382,7 @@ async function verifyImageData(data: unknown) {
     captureId: envelope.captureId,
     verdict,
     confidence,
+    mediaKind,
     reasons,
     clientStoragePath: input.storagePath ?? null,
     createdAt: Timestamp.now(),
@@ -355,6 +393,7 @@ async function verifyImageData(data: unknown) {
     confidence,
     captureId: envelope.captureId,
     certificateId: record.certificateId,
+    mediaKind,
     checks: {
       proofFound: true,
       backendRecordFound: true,
@@ -365,12 +404,28 @@ async function verifyImageData(data: unknown) {
   };
 }
 
+async function verifyImageData(data: unknown) {
+  return verifyMediaData(data, 'image');
+}
+
+async function verifyVideoData(data: unknown) {
+  return verifyMediaData(data, 'video');
+}
+
 export const verifyImagePublic = onRequest(HTTP_OPTIONS, (req, res) => {
   return handleJsonRequest(req, res, verifyImageData);
 });
 
 export const verifyImage = onCall(CALLABLE_OPTIONS, async (request) => {
   return verifyImageData(request.data);
+});
+
+export const verifyVideoPublic = onRequest(HTTP_OPTIONS, (req, res) => {
+  return handleJsonRequest(req, res, verifyVideoData);
+});
+
+export const verifyVideo = onCall(CALLABLE_OPTIONS, async (request) => {
+  return verifyVideoData(request.data);
 });
 
 async function getCertificateData(data: unknown) {

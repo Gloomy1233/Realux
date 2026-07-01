@@ -31,3 +31,30 @@ export async function saveCaptureToPhotoLibrary(fileUri: string): Promise<SaveTo
     };
   }
 }
+
+/**
+ * Writes a local MP4 into the system photo library.
+ */
+export async function saveVideoToLibrary(fileUri: string): Promise<SaveToLibraryResult> {
+  if (Platform.OS === 'web') {
+    return { ok: true };
+  }
+
+  let access = await MediaLibrary.getPermissionsAsync(true);
+  if (!access.granted) {
+    access = await MediaLibrary.requestPermissionsAsync(true);
+  }
+  if (!access.granted) {
+    return { ok: false, reason: 'Photo library access was denied, so the video was not saved to your gallery.' };
+  }
+
+  try {
+    const asset = await MediaLibrary.createAssetAsync(fileUri);
+    return { ok: true, assetId: asset.id };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : 'Could not save the video to your gallery.',
+    };
+  }
+}

@@ -2,18 +2,31 @@ import { z } from 'zod';
 export const PROOF_VERSION = 'realux-proof-v2';
 export const CERTIFICATE_VERSION = 'realux-certificate-v1';
 export const CERTIFICATE_KEY_ID = 'realux-p256-cert-v1';
-export const CaptureMetadataSchema = z.object({
+export const MediaKindSchema = z.enum(['image', 'video']);
+export const CaptureMetadataSchema = z
+    .object({
     width: z.number().int().positive(),
     height: z.number().int().positive(),
-    mimeType: z.literal('image/jpeg'),
+    mimeType: z.enum(['image/jpeg', 'video/mp4']),
+    durationMs: z.number().int().positive().optional(),
     appVersion: z.string().min(1),
     deviceId: z.string().min(8),
     capturedAt: z.number().int().positive(),
     platform: z.string().min(1),
+})
+    .superRefine((data, ctx) => {
+    if (data.mimeType === 'video/mp4' && !data.durationMs) {
+        ctx.addIssue({
+            code: 'custom',
+            message: 'durationMs is required for video captures.',
+            path: ['durationMs'],
+        });
+    }
 });
 export const CreateCaptureSessionRequestSchema = z.object({
     deviceId: z.string().min(8),
     ownerUid: z.string().min(1).optional(),
+    mediaKind: MediaKindSchema.optional().default('image'),
 });
 export const RegisterCaptureRequestSchema = z.object({
     captureId: z.string().uuid(),
@@ -23,10 +36,16 @@ export const RegisterCaptureRequestSchema = z.object({
     metadata: CaptureMetadataSchema,
     /** Mobile app sends JPEG as base64 to avoid React Native Storage Blob limitations. */
     imageBase64: z.string().min(1).optional(),
+    /** Video captures are uploaded to Cloud Storage first; base64 is optional for small test files. */
+    videoBase64: z.string().min(1).optional(),
 });
 export const VerifyImageRequestSchema = z.object({
     storagePath: z.string().min(1).optional(),
     imageBase64: z.string().min(1).optional(),
+});
+export const VerifyVideoRequestSchema = z.object({
+    storagePath: z.string().min(1).optional(),
+    videoBase64: z.string().min(1).optional(),
 });
 export const GetCertificateRequestSchema = z.object({
     captureId: z.string().uuid(),

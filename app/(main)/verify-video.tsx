@@ -5,8 +5,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { listProofVaultEntries, type ProofVaultEntry } from '@/lib/authenticity/proofVault';
-import { verifyImageWithBackend } from '@/lib/authenticity/verifyRemote';
-import { resolvePickedImageUri } from '@/lib/media/resolvePickedImageUri';
+import { verifyVideoWithBackend } from '@/lib/authenticity/verifyVideoRemote';
+import { persistVideoCaptureToCache } from '@/lib/media/persistCaptureUri';
 import { useSessionStore } from '@/store/sessionStore';
 import type { VerificationOutcome, VerificationResultLabel } from '@/types/verification';
 
@@ -14,7 +14,7 @@ function shortCaptureId(captureId: string): string {
   return captureId.length > 12 ? `${captureId.slice(0, 8)}…` : captureId;
 }
 
-export default function VerifyScreen() {
+export default function VerifyVideoScreen() {
   const router = useRouter();
   const user = useSessionStore((s) => s.user);
   const setLast = useSessionStore((s) => s.setLastVerification);
@@ -23,7 +23,7 @@ export default function VerifyScreen() {
   const [savedCaptures, setSavedCaptures] = useState<ProofVaultEntry[]>([]);
 
   const loadSavedCaptures = useCallback(async () => {
-    const entries = await listProofVaultEntries('image');
+    const entries = await listProofVaultEntries('video');
     setSavedCaptures(entries);
   }, []);
 
@@ -41,19 +41,19 @@ export default function VerifyScreen() {
 
   async function runVerification(localUri: string) {
     if (!user?.uid) {
-      setMsg('You must be signed in to verify images.');
+      setMsg('You must be signed in to verify videos.');
       return;
     }
     setBusy(true);
     setMsg(null);
     try {
-      const remote = await verifyImageWithBackend({ localUri, uid: user.uid });
+      const remote = await verifyVideoWithBackend({ localUri, uid: user.uid });
       const outcome: VerificationOutcome = {
         label: mapServerVerdict(remote.verdict),
         mediaId: remote.captureId,
         certificateId: remote.certificateId,
         serverVerdict: remote.verdict,
-        mediaKind: 'image',
+        mediaKind: 'video',
         details: {
           payloadFound: remote.checks?.proofFound ?? remote.verdict !== 'unknown_provenance',
           firestoreRecordFound: remote.checks?.backendRecordFound ?? false,
@@ -83,38 +83,34 @@ export default function VerifyScreen() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsEditing: false,
-      quality: 1,
       ...(Platform.OS === 'ios'
-        ? { preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current }
+        ? { videoQuality: ImagePicker.UIImagePickerControllerQualityType.High }
         : null),
     });
     if (res.canceled || !res.assets?.[0]?.uri) return;
     const asset = res.assets[0];
-    const uri = await resolvePickedImageUri({
-      uri: asset.uri,
-      assetId: asset.assetId,
-    });
+    const uri = await persistVideoCaptureToCache(asset.uri);
     await runVerification(uri);
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.body}>
-        Verify a photo that Realux registered on this device. The proof bytes must still be present in the file you
+        Verify a video that Realux registered on this device. The proof bytes must still be present in the file you
         verify.
       </Text>
       {Platform.OS === 'ios' ? (
         <Text style={styles.hint}>
-          On iPhone, the Photos app often re-encodes images and removes hidden proof data. For reliable verification,
+          On iPhone, re-exporting or editing a video in Photos can strip embedded proof data. For reliable verification,
           use a saved capture below instead of picking from Photos.
         </Text>
       ) : null}
 
       {savedCaptures.length ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Saved captures on this device</Text>
+          <Text style={styles.sectionTitle}>Saved videos on this device</Text>
           {savedCaptures.map((entry) => (
             <Pressable
               key={entry.captureId}
@@ -128,7 +124,7 @@ export default function VerifyScreen() {
           ))}
         </View>
       ) : (
-        <Text style={styles.hint}>No saved captures yet. Register an image or video first, then verify it here.</Text>
+        <Text style={styles.hint}>No saved videos yet. Register a video first, then verify it here.</Text>
       )}
 
       {busy ? <ActivityIndicator /> : <PrimaryButton title="Pick from photo library" onPress={pickAndRun} />}

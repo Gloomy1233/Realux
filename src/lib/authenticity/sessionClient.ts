@@ -4,6 +4,7 @@ import {
   RegisterCaptureResponseSchema,
   type CaptureMetadata,
   type CaptureSessionResponse,
+  type MediaKind,
   type RegisterCaptureResponse,
 } from '@/types/authenticity';
 
@@ -84,9 +85,10 @@ export async function createCaptureSession(deviceId: string): Promise<CaptureSes
 
 export async function createCaptureSessionForOwner(
   deviceId: string,
-  ownerUid: string
+  ownerUid: string,
+  mediaKind: MediaKind = 'image'
 ): Promise<CaptureSessionResponse> {
-  const res = await callPublicFunction('createCaptureSessionPublic', { deviceId, ownerUid });
+  const res = await callPublicFunction('createCaptureSessionPublic', { deviceId, ownerUid, mediaKind });
   return CaptureSessionResponseSchema.parse(res);
 }
 
@@ -96,7 +98,8 @@ export async function commitCaptureRegistration(params: {
   storagePath: string;
   clientPublicKey: string;
   metadata: CaptureMetadata;
-  imageBase64: string;
+  imageBase64?: string;
+  videoBase64?: string;
 }): Promise<RegisterCaptureResponse> {
   const res = await callPublicFunction('registerCapturePublic', params);
   return RegisterCaptureResponseSchema.parse(res);

@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import type { MediaKind } from '@/types/authenticity';
+
 const INDEX_KEY = 'realux:proof-vault-index';
 
 export type ProofVaultEntry = {
@@ -8,13 +10,18 @@ export type ProofVaultEntry = {
   uri: string;
   createdAt: number;
   photosAssetId?: string;
+  mediaKind: MediaKind;
 };
 
 async function readIndex(): Promise<ProofVaultEntry[]> {
   const raw = await AsyncStorage.getItem(INDEX_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as ProofVaultEntry[];
+    const parsed = JSON.parse(raw) as ProofVaultEntry[];
+    return parsed.map((entry) => ({
+      ...entry,
+      mediaKind: entry.mediaKind ?? 'image',
+    }));
   } catch {
     return [];
   }
@@ -27,11 +34,13 @@ async function writeIndex(entries: ProofVaultEntry[]): Promise<void> {
 export async function saveProofToVault(
   captureId: string,
   proofUri: string,
+  mediaKind: MediaKind = 'image',
   photosAssetId?: string
 ): Promise<ProofVaultEntry> {
   const dir = `${FileSystem.documentDirectory}realux-proofs/`;
   await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-  const dest = `${dir}${captureId}.jpg`;
+  const extension = mediaKind === 'video' ? 'mp4' : 'jpg';
+  const dest = `${dir}${captureId}.${extension}`;
   await FileSystem.copyAsync({ from: proofUri, to: dest });
 
   const entry: ProofVaultEntry = {
@@ -39,6 +48,7 @@ export async function saveProofToVault(
     uri: dest,
     createdAt: Date.now(),
     photosAssetId,
+    mediaKind,
   };
 
   const index = await readIndex();
@@ -46,7 +56,7 @@ export async function saveProofToVault(
   return entry;
 }
 
-export async function listProofVaultEntries(): Promise<ProofVaultEntry[]> {
+export async function listProofVaultEntries(mediaKind?: MediaKind): Promise<ProofVaultEntry[]> {
   const index = await readIndex();
   const valid: ProofVaultEntry[] = [];
 
@@ -59,7 +69,8 @@ export async function listProofVaultEntries(): Promise<ProofVaultEntry[]> {
     await writeIndex(valid);
   }
 
-  return valid.sort((a, b) => b.createdAt - a.createdAt);
+  const filtered = mediaKind ? valid.filter((entry) => entry.mediaKind === mediaKind) : valid;
+  return filtered.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function getProofVaultEntry(captureId: string): Promise<ProofVaultEntry | null> {

@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { verificationResultTitle } from '@/lib/verify/resultLabels';
@@ -53,7 +53,10 @@ export default function VerifyResultScreen() {
           ))}
         </>
       ) : null}
-      <PrimaryButton title="Verify another" onPress={() => router.replace('/verify')} />
+      <PrimaryButton
+        title="Verify another"
+        onPress={() => router.replace((outcome.mediaKind === 'video' ? '/verify-video' : '/verify') as Href)}
+      />
       <PrimaryButton title="Home" onPress={() => router.replace('/home')} />
     </ScrollView>
   );
